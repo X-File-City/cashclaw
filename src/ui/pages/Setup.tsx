@@ -1,10 +1,22 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { WalletStep } from "./setup/WalletStep.js";
 import { RegisterStep } from "./setup/RegisterStep.js";
 import { LLMStep } from "./setup/LLMStep.js";
 import { PersonalityStep } from "./setup/PersonalityStep.js";
 
-const STEPS = ["Wallet", "Register", "LLM", "Personality"] as const;
+type StepId = "wallet" | "register" | "llm" | "personality";
+
+interface StepDef {
+  id: StepId;
+  label: string;
+}
+
+const ALL_STEPS: StepDef[] = [
+  { id: "wallet", label: "Wallet" },
+  { id: "register", label: "Register" },
+  { id: "llm", label: "LLM" },
+  { id: "personality", label: "Personality" },
+];
 
 interface SetupProps {
   onComplete: () => void;
@@ -13,12 +25,32 @@ interface SetupProps {
 export function Setup({ onComplete }: SetupProps) {
   const [step, setStep] = useState(0);
   const [agentId, setAgentId] = useState("");
+  const [skipRegister, setSkipRegister] = useState(false);
+
+  const steps = useMemo(
+    () => (skipRegister ? ALL_STEPS.filter((s) => s.id !== "register") : ALL_STEPS),
+    [skipRegister],
+  );
 
   function next() {
-    if (step < STEPS.length - 1) {
+    if (step < steps.length - 1) {
       setStep(step + 1);
     }
   }
+
+  function handleWalletNext(existingAgentId?: string) {
+    if (existingAgentId) {
+      setAgentId(existingAgentId);
+      setSkipRegister(true);
+      // Next step after wallet is LLM when skipping register.
+      // Since skipRegister will filter out register, step 1 becomes LLM.
+      setStep(1);
+    } else {
+      next();
+    }
+  }
+
+  const currentStepId = steps[step]?.id;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -32,8 +64,8 @@ export function Setup({ onComplete }: SetupProps) {
       <main className="flex-1 flex flex-col items-center px-6 py-12">
         {/* Step indicator */}
         <div className="flex items-center gap-2 mb-10">
-          {STEPS.map((label, i) => (
-            <div key={label} className="flex items-center gap-2">
+          {steps.map((s, i) => (
+            <div key={s.id} className="flex items-center gap-2">
               <div
                 className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
                   i < step
@@ -50,9 +82,9 @@ export function Setup({ onComplete }: SetupProps) {
                   i === step ? "text-zinc-100" : "text-zinc-500"
                 }`}
               >
-                {label}
+                {s.label}
               </span>
-              {i < STEPS.length - 1 && (
+              {i < steps.length - 1 && (
                 <div className="w-8 h-px bg-zinc-700" />
               )}
             </div>
@@ -61,8 +93,8 @@ export function Setup({ onComplete }: SetupProps) {
 
         {/* Step content */}
         <div className="w-full max-w-lg">
-          {step === 0 && <WalletStep onNext={next} />}
-          {step === 1 && (
+          {currentStepId === "wallet" && <WalletStep onNext={handleWalletNext} />}
+          {currentStepId === "register" && (
             <RegisterStep
               onNext={(id) => {
                 setAgentId(id);
@@ -70,8 +102,8 @@ export function Setup({ onComplete }: SetupProps) {
               }}
             />
           )}
-          {step === 2 && <LLMStep onNext={next} />}
-          {step === 3 && <PersonalityStep onComplete={onComplete} />}
+          {currentStepId === "llm" && <LLMStep onNext={next} />}
+          {currentStepId === "personality" && <PersonalityStep onComplete={onComplete} />}
         </div>
       </main>
     </div>

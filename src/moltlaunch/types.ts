@@ -77,3 +77,14 @@ export interface Bounty {
   budgetWei: string;
   status: string;
 }
+
+export interface AgentInfo {
+  agentId: string;
+  name: string;
+  description: string;
+  skills: string[];
+  priceEth: string;
+  owner: string;
+  flaunchToken?: string;
+  reputation?: number;
+}

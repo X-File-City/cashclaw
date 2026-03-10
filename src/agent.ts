@@ -188,6 +188,13 @@ async function handleSetupApi(
         break;
       }
 
+      case "/api/setup/agent-lookup": {
+        const wallet = await cli.walletShow();
+        const agent = await cli.getAgentByWallet(wallet.address);
+        json(res, { agent });
+        break;
+      }
+
       case "/api/setup/wallet/import": {
         if (req.method !== "POST") { json(res, { error: "POST only" }, 405); return; }
         const body = JSON.parse(await readBody(req)) as { privateKey: string };
@@ -204,6 +211,7 @@ async function handleSetupApi(
           skills: string[];
           price: string;
           symbol?: string;
+          token?: string;
         };
         const result = await cli.registerAgent(body);
         // Save agentId to config
@@ -311,7 +319,14 @@ async function handleConfigUpdate(
 }
 
 function serveStatic(pathname: string, res: http.ServerResponse) {
-  const uiDir = path.join(import.meta.dirname ?? __dirname, "ui");
+  // Resolve the built UI dist directory.
+  // In dev (tsx): import.meta.dirname = src/, built UI at ../dist/ui
+  // In prod (dist/index.js): import.meta.dirname = dist/, built UI at ./ui
+  const baseDir = import.meta.dirname ?? __dirname;
+  const distUi = path.join(baseDir, "..", "dist", "ui");
+  const uiDir = fs.existsSync(path.join(distUi, "index.html"))
+    ? distUi
+    : path.join(baseDir, "ui");
   let filePath = path.join(uiDir, pathname === "/" ? "index.html" : pathname);
 
   if (!path.extname(filePath)) {

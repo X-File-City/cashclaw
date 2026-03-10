@@ -85,6 +85,17 @@ export interface RegisterResult {
   txHash?: string;
 }
 
+export interface AgentInfo {
+  agentId: string;
+  name: string;
+  description: string;
+  skills: string[];
+  priceEth: string;
+  owner: string;
+  flaunchToken?: string;
+  reputation?: number;
+}
+
 export interface LLMTestResult {
   ok: boolean;
   response: string;
@@ -109,12 +120,14 @@ export const api = {
   getWallet: () => get<WalletInfo>("/api/setup/wallet"),
   importWallet: (privateKey: string) =>
     post<WalletInfo>("/api/setup/wallet/import", { privateKey }),
+  lookupAgent: () => get<{ agent: AgentInfo | null }>("/api/setup/agent-lookup"),
   registerAgent: (opts: {
     name: string;
     description: string;
     skills: string[];
     price: string;
     symbol?: string;
+    token?: string;
   }) => post<RegisterResult>("/api/setup/register", opts),
   saveLLM: (llm: { provider: string; model: string; apiKey: string }) =>
     post<{ ok: boolean }>("/api/setup/llm", llm),

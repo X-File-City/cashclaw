@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { Task, Bounty, WalletInfo, RegisterResult } from "./types.js";
+import type { Task, Bounty, WalletInfo, RegisterResult, AgentInfo } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -18,14 +18,14 @@ async function mltl<T>(
   timeout = DEFAULT_TIMEOUT,
 ): Promise<T> {
   try {
-    const { stdout } = await execFileAsync(MLTL_BIN, ["--json", ...args], {
+    // --json is a per-subcommand flag, appended at the end
+    const { stdout } = await execFileAsync(MLTL_BIN, [...args, "--json"], {
       timeout,
       env: { ...process.env },
     });
 
     const parsed = JSON.parse(stdout.trim()) as T | CliError;
 
-    // mltl may return { error: "..." } in stdout
     if (
       parsed !== null &&
       typeof parsed === "object" &&
@@ -41,7 +41,6 @@ async function mltl<T>(
       throw err;
     }
     if (err instanceof Error) {
-      // Improve common errors
       if ("code" in err && (err as NodeJS.ErrnoException).code === "ENOENT") {
         throw new Error(
           "mltl CLI not found. Install it with: npm install -g @moltlaunch/cli",
@@ -69,6 +68,7 @@ export interface RegisterOpts {
   skills: string[];
   price: string;
   symbol?: string;
+  token?: string;
 }
 
 export async function registerAgent(opts: RegisterOpts): Promise<RegisterResult> {
@@ -82,7 +82,25 @@ export async function registerAgent(opts: RegisterOpts): Promise<RegisterResult>
   if (opts.symbol) {
     args.push("--symbol", opts.symbol);
   }
+  if (opts.token) {
+    args.push("--token", opts.token);
+  }
   return mltl<RegisterResult>(args, REGISTER_TIMEOUT);
+}
+
+// --- Agent lookup ---
+
+export async function getAgentByWallet(address: string): Promise<AgentInfo | null> {
+  try {
+    const res = await fetch(
+      `https://api.moltlaunch.com/api/agents/by-wallet/${address}`,
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as { agents: AgentInfo[] };
+    return data.agents[0] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // --- Task operations ---
@@ -95,7 +113,7 @@ export async function getInbox(agentId?: string): Promise<Task[]> {
 }
 
 export async function getTask(taskId: string): Promise<Task> {
-  const result = await mltl<{ task: Task }>(["task", "get", taskId]);
+  const result = await mltl<{ task: Task }>(["view", "--task", taskId]);
   return result.task;
 }
 
@@ -104,7 +122,7 @@ export async function quoteTask(
   priceEth: string,
   message?: string,
 ): Promise<void> {
-  const args = ["task", "quote", taskId, "--price", priceEth];
+  const args = ["quote", "--task", taskId, "--price", priceEth];
   if (message) args.push("--message", message);
   await mltl<unknown>(args);
 }
@@ -113,7 +131,7 @@ export async function declineTask(
   taskId: string,
   reason?: string,
 ): Promise<void> {
-  const args = ["task", "decline", taskId];
+  const args = ["decline", "--task", taskId];
   if (reason) args.push("--reason", reason);
   await mltl<unknown>(args);
 }
@@ -122,18 +140,18 @@ export async function submitWork(
   taskId: string,
   result: string,
 ): Promise<void> {
-  await mltl<unknown>(["task", "submit", taskId, "--result", result]);
+  await mltl<unknown>(["submit", "--task", taskId, "--result", result]);
 }
 
 export async function sendMessage(
   taskId: string,
   content: string,
 ): Promise<void> {
-  await mltl<unknown>(["task", "message", taskId, "--content", content]);
+  await mltl<unknown>(["message", "--task", taskId, "--content", content]);
 }
 
 export async function getBounties(): Promise<Bounty[]> {
-  const result = await mltl<{ bounties: Bounty[] }>(["bounties"]);
+  const result = await mltl<{ bounties: Bounty[] }>(["bounty", "browse"]);
   return result.bounties;
 }
 
@@ -141,7 +159,7 @@ export async function claimBounty(
   taskId: string,
   message?: string,
 ): Promise<void> {
-  const args = ["bounty", "claim", taskId];
+  const args = ["bounty", "claim", "--task", taskId];
   if (message) args.push("--message", message);
   await mltl<unknown>(args);
 }
