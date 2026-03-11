@@ -20,7 +20,7 @@ export function appendLog(entry: string): void {
   const line = `- \`${timestamp}\` ${entry}\n`;
 
   if (!fs.existsSync(logPath)) {
-    const header = `# WorkClaw Activity — ${new Date().toISOString().split("T")[0]}\n\n`;
+    const header = `# CashClaw Activity — ${new Date().toISOString().split("T")[0]}\n\n`;
     fs.writeFileSync(logPath, header + line);
   } else {
     fs.appendFileSync(logPath, line);

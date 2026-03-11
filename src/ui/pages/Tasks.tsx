@@ -2,15 +2,15 @@ import { useState, useEffect } from "react";
 import { api, type TaskData } from "../lib/api.js";
 import { formatEther } from "viem";
 
-const STATUS_COLORS: Record<string, string> = {
-  requested: "bg-amber-900/50 text-amber-300",
-  quoted: "bg-blue-900/50 text-blue-300",
-  accepted: "bg-emerald-900/50 text-emerald-300",
-  submitted: "bg-purple-900/50 text-purple-300",
-  revision: "bg-orange-900/50 text-orange-300",
-  completed: "bg-emerald-900/50 text-emerald-300",
-  declined: "bg-zinc-800 text-zinc-400",
-  cancelled: "bg-zinc-800 text-zinc-400",
+const STATUS_STYLES: Record<string, string> = {
+  requested: "text-amber-400 bg-amber-500/10 border-amber-500/20",
+  quoted: "text-sky-400 bg-sky-500/10 border-sky-500/20",
+  accepted: "text-green-400 bg-green-500/10 border-green-500/20",
+  submitted: "text-violet-400 bg-violet-500/10 border-violet-500/20",
+  revision: "text-orange-400 bg-orange-500/10 border-orange-500/20",
+  completed: "text-green-400 bg-green-500/10 border-green-500/20",
+  declined: "text-zinc-600 bg-zinc-500/5 border-zinc-500/10",
+  cancelled: "text-zinc-600 bg-zinc-500/5 border-zinc-500/10",
 };
 
 export function Tasks() {
@@ -39,52 +39,69 @@ export function Tasks() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">
-        Tasks
-      </h2>
+      <div className="flex items-center gap-2">
+        <div className="w-1 h-3 bg-red-500/20 rounded-[1px]" />
+        <h2 className="text-[9px] font-mono font-bold text-zinc-600 tracking-[0.2em]">
+          OPERATIONS
+        </h2>
+        <div className="flex-1 h-px bg-red-500/5" />
+        <span className="text-[9px] font-mono text-zinc-800">
+          {tasks.length} ACTIVE
+        </span>
+      </div>
 
       {tasks.length === 0 ? (
-        <div className="text-center py-16 text-zinc-600">
-          <p className="text-lg">No tasks yet</p>
-          <p className="text-sm mt-1">Tasks will appear as they come in from your inbox</p>
+        <div className="panel text-center py-20">
+          <div className="w-12 h-12 border border-red-500/10 rounded-sm flex items-center justify-center mx-auto mb-3">
+            <div className="w-2 h-2 border border-zinc-800 rounded-sm" />
+          </div>
+          <p className="text-zinc-700 font-mono text-[10px] tracking-[0.2em]">NO ACTIVE OPS</p>
+          <p className="text-zinc-800 text-[10px] mt-1.5 font-mono">Waiting for dispatch</p>
         </div>
       ) : (
-        <div className="bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="panel overflow-hidden">
+          <table className="w-full">
             <thead>
-              <tr className="border-b border-zinc-800 text-zinc-500 text-xs uppercase">
-                <th className="px-4 py-3 text-left">ID</th>
-                <th className="px-4 py-3 text-left">Task</th>
-                <th className="px-4 py-3 text-left">Status</th>
-                <th className="px-4 py-3 text-right">Price</th>
-                <th className="px-4 py-3 text-right">Rating</th>
+              <tr className="border-b border-red-500/[0.05]">
+                {["ID", "TASK", "STATUS", "VALUE", "SCORE"].map((h, i) => (
+                  <th
+                    key={h}
+                    className={`px-3 py-2 text-[8px] text-zinc-700 font-mono font-bold tracking-[0.2em] ${
+                      i >= 3 ? "text-right" : "text-left"
+                    }`}
+                  >
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-800/50">
+            <tbody className="divide-y divide-red-500/[0.03]">
               {tasks.map((t) => (
                 <tr
                   key={t.id}
                   onClick={() => setSelected(selected?.id === t.id ? null : t)}
-                  className="hover:bg-zinc-800/50 cursor-pointer transition-colors"
+                  className={`cursor-pointer transition-colors ${
+                    selected?.id === t.id ? "bg-red-500/[0.03]" : "hover:bg-red-500/[0.02]"
+                  }`}
                 >
-                  <td className="px-4 py-3">
-                    <code className="text-zinc-400">{t.id.slice(0, 8)}</code>
+                  <td className="px-3 py-2">
+                    <code className="text-zinc-700 text-[10px] font-mono">{t.id.slice(0, 8)}</code>
                   </td>
-                  <td className="px-4 py-3 max-w-md truncate">{t.task}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-2 max-w-md truncate text-zinc-400 text-[11px] font-mono">{t.task}</td>
+                  <td className="px-3 py-2">
                     <span
-                      className={`px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[t.status] ?? "bg-zinc-800 text-zinc-400"}`}
+                      className={`inline-block px-1.5 py-0.5 rounded-sm text-[9px] font-mono font-bold tracking-wider border ${STATUS_STYLES[t.status] ?? "text-zinc-600 bg-zinc-500/5 border-zinc-500/10"}`}
                     >
-                      {t.status}
+                      {t.status.toUpperCase()}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums">
+                  <td className="px-3 py-2 text-right font-mono text-zinc-600 text-[10px] readout">
                     {t.quotedPriceWei
                       ? `${formatEther(BigInt(t.quotedPriceWei))} ETH`
-                      : "—"}
+                      : "--"}
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    {t.ratedScore !== undefined ? `${t.ratedScore}/5` : "—"}
+                  <td className="px-3 py-2 text-right font-mono text-zinc-600 text-[10px]">
+                    {t.ratedScore !== undefined ? `${t.ratedScore}/5` : "--"}
                   </td>
                 </tr>
               ))}
@@ -95,21 +112,23 @@ export function Tasks() {
 
       {/* Detail panel */}
       {selected && (
-        <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-4 space-y-3">
-          <div className="flex justify-between items-start">
-            <h3 className="font-medium">Task {selected.id.slice(0, 12)}</h3>
+        <div className="panel p-4 space-y-3">
+          <div className="flex justify-between items-center">
+            <h3 className="font-mono text-[10px] text-zinc-500 tracking-wider">
+              OP:<span className="text-zinc-400">{selected.id.slice(0, 12)}</span>
+            </h3>
             <button
               onClick={() => setSelected(null)}
-              className="text-zinc-500 hover:text-zinc-300 text-sm"
+              className="text-[9px] font-mono text-zinc-700 hover:text-zinc-500 tracking-wider transition-colors"
             >
-              Close
+              CLOSE
             </button>
           </div>
-          <p className="text-zinc-300 text-sm">{selected.task}</p>
+          <p className="text-zinc-400 text-sm leading-relaxed">{selected.task}</p>
           {selected.result && (
             <div>
-              <p className="text-xs text-zinc-500 uppercase mb-1">Result</p>
-              <pre className="text-xs text-zinc-400 bg-zinc-950 p-3 rounded overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap">
+              <p className="text-[8px] text-zinc-700 font-mono font-bold tracking-[0.2em] mb-1.5">OUTPUT</p>
+              <pre className="text-[10px] text-zinc-500 bg-zinc-950/80 p-3 rounded-sm overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap border border-red-500/[0.05] font-mono">
                 {selected.result}
               </pre>
             </div>

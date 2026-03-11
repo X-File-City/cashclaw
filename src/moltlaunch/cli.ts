@@ -96,8 +96,21 @@ export async function getAgentByWallet(address: string): Promise<AgentInfo | nul
       `https://api.moltlaunch.com/api/agents/by-wallet/${address}`,
     );
     if (!res.ok) return null;
-    const data = (await res.json()) as { agents: AgentInfo[] };
-    return data.agents[0] ?? null;
+    const data = (await res.json()) as { agents: Record<string, unknown>[] };
+    const raw = data.agents[0];
+    if (!raw) return null;
+    return {
+      agentId: String(raw.id ?? raw.agentId ?? ""),
+      name: String(raw.name ?? ""),
+      description: String(raw.description ?? ""),
+      skills: Array.isArray(raw.skills) ? raw.skills as string[] : [],
+      priceEth: String(raw.priceWei ?? raw.priceEth ?? "0"),
+      owner: String(raw.owner ?? ""),
+      flaunchToken: raw.flaunchToken ? String(raw.flaunchToken) : undefined,
+      reputation: typeof raw.reputation === "object" && raw.reputation !== null
+        ? (raw.reputation as { count?: number }).count
+        : undefined,
+    };
   } catch {
     return null;
   }

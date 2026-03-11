@@ -6,9 +6,9 @@ interface LLMStepProps {
 }
 
 const PROVIDERS = [
-  { value: "anthropic", label: "Anthropic", desc: "Claude models — best for reasoning and code", model: "claude-sonnet-4-20250514" },
-  { value: "openai", label: "OpenAI", desc: "GPT-4o and other OpenAI models", model: "gpt-4o" },
-  { value: "openrouter", label: "OpenRouter", desc: "Access multiple providers through one API", model: "anthropic/claude-sonnet-4-20250514" },
+  { value: "anthropic", label: "ANTHROPIC", desc: "Claude models", model: "claude-sonnet-4-20250514" },
+  { value: "openai", label: "OPENAI", desc: "GPT-4o", model: "gpt-4o" },
+  { value: "openrouter", label: "OPENROUTER", desc: "Multi-provider", model: "anthropic/claude-sonnet-4-20250514" },
 ];
 
 export function LLMStep({ onNext }: LLMStepProps) {
@@ -59,97 +59,89 @@ export function LLMStep({ onNext }: LLMStepProps) {
     }
   }
 
+  const inputCls = "w-full bg-zinc-950 border border-red-500/10 rounded-sm px-3 py-2 text-[11px] font-mono text-zinc-400 focus:outline-none focus:border-red-500/25 transition-colors";
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
-        <h2 className="text-xl font-semibold mb-2">LLM Configuration</h2>
-        <p className="text-sm text-zinc-400">
-          Connect an LLM provider to power your agent's reasoning and task execution.
+        <h2 className="text-base font-mono font-bold text-zinc-200 mb-1">Brain</h2>
+        <p className="text-[11px] text-zinc-600 font-mono leading-relaxed">
+          Connect the LLM powering reasoning and execution.
         </p>
       </div>
 
       {error && (
-        <div className="bg-red-950 border border-red-800 rounded-lg px-4 py-3 text-sm text-red-300">
-          {error}
-        </div>
+        <div className="panel px-4 py-3 text-[11px] text-red-400 font-mono">{error}</div>
       )}
 
-      <div className="space-y-4">
+      <div className="space-y-3">
         <div>
-          <label className="block text-sm text-zinc-400 mb-2">Provider</label>
-          <div className="space-y-2">
+          <label className="block text-[8px] text-zinc-700 font-mono font-bold tracking-[0.2em] mb-1.5">PROVIDER</label>
+          <div className="space-y-1">
             {PROVIDERS.map((p) => (
               <button
                 key={p.value}
                 onClick={() => handleProviderChange(p.value)}
-                className={`w-full text-left px-4 py-3 rounded border transition-colors ${
+                className={`w-full text-left px-3 py-2.5 rounded-sm border transition-all duration-100 ${
                   provider === p.value
-                    ? "border-zinc-100 bg-zinc-800"
-                    : "border-zinc-700 hover:border-zinc-500"
+                    ? "border-red-500/25 bg-red-500/5"
+                    : "border-zinc-800 hover:border-zinc-700"
                 }`}
               >
-                <span className={`block text-sm font-medium ${provider === p.value ? "text-zinc-100" : "text-zinc-300"}`}>
+                <span className={`block text-[11px] font-mono font-bold tracking-wider ${provider === p.value ? "text-zinc-300" : "text-zinc-500"}`}>
                   {p.label}
                 </span>
-                <span className="block text-xs text-zinc-500 mt-0.5">{p.desc}</span>
+                <span className="block text-[9px] text-zinc-700 mt-0.5 font-mono">{p.desc}</span>
               </button>
             ))}
           </div>
         </div>
 
         <div>
-          <label className="block text-sm text-zinc-400 mb-1">API Key</label>
+          <label className="block text-[8px] text-zinc-700 font-mono font-bold tracking-[0.2em] mb-1">API KEY</label>
           <input
             type="password"
             value={apiKey}
             onChange={(e) => { setApiKey(e.target.value); setTestPassed(false); }}
             placeholder="sk-..."
-            className="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-zinc-500"
+            className={inputCls}
           />
         </div>
 
         <div>
-          <label className="block text-sm text-zinc-400 mb-1">Model</label>
-          <input
-            type="text"
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            className="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-zinc-500"
-          />
-          <p className="text-xs text-zinc-600 mt-1">Model ID for the selected provider</p>
+          <label className="block text-[8px] text-zinc-700 font-mono font-bold tracking-[0.2em] mb-1">MODEL</label>
+          <input type="text" value={model} onChange={(e) => setModel(e.target.value)} className={inputCls} />
         </div>
       </div>
 
       <button
         onClick={handleTest}
         disabled={testing || !apiKey.trim()}
-        className="w-full py-2 border border-zinc-700 rounded text-sm text-zinc-300 hover:bg-zinc-900 disabled:opacity-50"
+        className="w-full py-2 border border-zinc-800 rounded-sm text-[10px] text-zinc-500 hover:bg-zinc-900/50 disabled:opacity-40 font-mono tracking-wider transition-colors"
       >
         {testing ? (
           <span className="flex items-center justify-center gap-2">
-            <span className="w-3.5 h-3.5 border-2 border-zinc-500 border-t-zinc-200 rounded-full animate-spin" />
-            Testing connection...
+            <span className="w-3 h-3 border border-zinc-600 border-t-zinc-300 rounded-full animate-spin" />
+            TESTING...
           </span>
         ) : (
-          "Test Connection"
+          "TEST CONNECTION"
         )}
       </button>
 
       {testResult && (
-        <div className="bg-emerald-950/50 border border-emerald-800/60 rounded-lg px-4 py-3 text-sm">
-          <div className="flex items-center gap-2 text-emerald-400 mb-1">
-            <span className="text-xs font-medium uppercase tracking-wide">Connection successful</span>
-          </div>
-          <p className="text-zinc-300 text-xs italic">"{testResult.slice(0, 120)}"</p>
+        <div className="panel border-green-500/15 px-4 py-3">
+          <p className="text-[8px] text-green-500 font-mono font-bold tracking-[0.2em] mb-1">LINK ESTABLISHED</p>
+          <p className="text-zinc-500 text-[10px] italic font-mono">"{testResult.slice(0, 120)}"</p>
         </div>
       )}
 
       <button
         onClick={handleSave}
         disabled={saving || !testPassed}
-        className="w-full py-2.5 bg-zinc-100 text-zinc-900 rounded text-sm font-medium hover:bg-zinc-200 disabled:opacity-50"
+        className="w-full py-2.5 bg-zinc-100 text-zinc-900 rounded-sm text-[11px] font-mono font-bold tracking-wider hover:bg-white disabled:opacity-40 transition-colors"
       >
-        {saving ? "Saving..." : "Continue"}
+        {saving ? "SAVING..." : "CONTINUE"}
       </button>
     </div>
   );

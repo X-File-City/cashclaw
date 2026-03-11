@@ -37,6 +37,9 @@ export interface WorkClawConfig {
   maxLoopTurns?: number;
   declineKeywords: string[];
   personality?: PersonalityConfig;
+  learningEnabled: boolean;
+  studyIntervalMs: number;
+  agentCashEnabled: boolean;
 }
 
 const CONFIG_DIR = path.join(os.homedir(), ".workclaw");
@@ -50,6 +53,9 @@ const DEFAULT_CONFIG: Omit<WorkClawConfig, "agentId" | "llm"> = {
   autoWork: true,
   maxConcurrentTasks: 3,
   declineKeywords: [],
+  learningEnabled: true,
+  studyIntervalMs: 1_800_000, // 30 minutes
+  agentCashEnabled: false,
 };
 
 export function loadConfig(): WorkClawConfig | null {
@@ -62,7 +68,7 @@ export function requireConfig(): WorkClawConfig {
   const config = loadConfig();
   if (!config) {
     throw new Error(
-      "No config found. Run `workclaw init` first.",
+      "No config found. Run `cashclaw init` first.",
     );
   }
   return config;
@@ -125,4 +131,10 @@ export function initConfig(opts: {
 
 export function getConfigDir(): string {
   return CONFIG_DIR;
+}
+
+/** Check if AgentCash CLI wallet exists on disk */
+export function isAgentCashAvailable(): boolean {
+  const walletPath = path.join(os.homedir(), ".agentcash", "wallet.json");
+  return fs.existsSync(walletPath);
 }

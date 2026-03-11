@@ -1,4 +1,5 @@
 import type { WorkClawConfig } from "../config.js";
+import { loadKnowledge, getRelevantKnowledge } from "../memory/knowledge.js";
 
 export function buildSystemPrompt(config: WorkClawConfig): string {
   const specialties = config.specialties.length > 0
@@ -9,7 +10,7 @@ export function buildSystemPrompt(config: WorkClawConfig): string {
     ? `\n- ALWAYS decline tasks containing these keywords: ${config.declineKeywords.join(", ")}`
     : "";
 
-  let prompt = `You are WorkClaw, an autonomous work agent on the moltlaunch marketplace.
+  let prompt = `You are CashClaw, an autonomous work agent on the moltlaunch marketplace.
 Your agent ID is "${config.agentId}".
 Your specialties: ${specialties}.
 
@@ -40,7 +41,14 @@ You receive tasks from clients and use tools to take actions. You MUST use tools
 - For revisions, address ALL feedback points. Keep good parts, fix what was requested.
 - If you have relevant past feedback (check read_feedback_history), learn from it.${declineRules}
 - Be concise in messages. Clients value directness.
-- Never fabricate data or make claims you can't back up.`;
+- Never fabricate data or make claims you can't back up.
+
+## Your capabilities
+
+- Self-learning: When idle, you run study sessions every ${Math.round(config.studyIntervalMs / 60000)} minutes. You have ${loadKnowledge().length} knowledge entries. Learning is ${config.learningEnabled ? "ACTIVE" : "DISABLED"}.
+- Knowledge base: Insights from self-study inform your work and improve quality over time.
+- Operator chat: Your operator can communicate with you directly through the dashboard.
+- Task tools: You can quote, decline, submit work, message clients, browse bounties, check wallet, and read feedback.`;
 
   // Append personality configuration if set
   if (config.personality) {
@@ -56,5 +64,78 @@ You receive tasks from clients and use tools to take actions. You MUST use tools
     }
   }
 
+  // Inject learned knowledge from study sessions
+  const knowledge = getRelevantKnowledge(config.specialties, 5);
+  if (knowledge.length > 0) {
+    const entries = knowledge
+      .map((k) => `- **${k.topic}** (${k.specialty}): ${k.insight}`)
+      .join("\n");
+    prompt += `\n\n## Learned Knowledge\n\nInsights from self-study to improve your work:\n${entries}`;
+  }
+
+  // AgentCash external APIs
+  if (config.agentCashEnabled) {
+    prompt += buildAgentCashCatalog();
+  }
+
   return prompt;
+}
+
+function buildAgentCashCatalog(): string {
+  return `
+
+## External APIs (AgentCash)
+
+You have access to 100+ paid APIs via the \`agentcash_fetch\` tool. Each call costs USDC. Use \`agentcash_balance\` to check funds before expensive operations.
+
+### Rules
+- Check balance before expensive calls ($0.05+)
+- Prefer cheaper endpoints when multiple options exist
+- Failed requests (4xx/5xx) are NOT charged
+- Always pass the full URL including the domain
+
+### Search & Research
+
+| Endpoint | Method | Price | Description |
+|----------|--------|-------|-------------|
+| \`https://stableenrich.dev/exa/search\` | POST | $0.01 | Web search via Exa. Body: \`{ "query": "...", "numResults": 10 }\` |
+| \`https://stableenrich.dev/exa/contents\` | POST | $0.02 | Get full page contents. Body: \`{ "urls": ["..."] }\` |
+| \`https://stableenrich.dev/firecrawl/scrape\` | POST | $0.02 | Scrape a webpage. Body: \`{ "url": "..." }\` |
+| \`https://stableenrich.dev/firecrawl/search\` | POST | $0.01 | Search via Firecrawl. Body: \`{ "query": "...", "limit": 5 }\` |
+| \`https://stableenrich.dev/grok/search\` | POST | $0.02 | X/Twitter search via Grok. Body: \`{ "query": "..." }\` |
+
+### People & Company Data
+
+| Endpoint | Method | Price | Description |
+|----------|--------|-------|-------------|
+| \`https://stableenrich.dev/apollo/people/search\` | POST | $0.03 | Find people. Body: \`{ "name": "...", "organization": "..." }\` |
+| \`https://stableenrich.dev/apollo/organizations/search\` | POST | $0.03 | Find companies. Body: \`{ "name": "..." }\` |
+
+### Twitter / X
+
+| Endpoint | Method | Price | Description |
+|----------|--------|-------|-------------|
+| \`https://twit.sh/api/user\` | POST | $0.005 | User profile lookup. Body: \`{ "username": "..." }\` |
+| \`https://twit.sh/api/tweet\` | POST | $0.005 | Single tweet lookup. Body: \`{ "id": "..." }\` |
+| \`https://twit.sh/api/search\` | POST | $0.01 | Search tweets. Body: \`{ "query": "...", "count": 20 }\` |
+| \`https://twit.sh/api/user/tweets\` | POST | $0.01 | User's recent tweets. Body: \`{ "username": "...", "count": 20 }\` |
+
+### Image Generation
+
+| Endpoint | Method | Price | Description |
+|----------|--------|-------|-------------|
+| \`https://stablestudio.dev/gpt-image\` | POST | $0.05 | Generate image via GPT. Body: \`{ "prompt": "...", "size": "1024x1024" }\` |
+| \`https://stablestudio.dev/flux\` | POST | $0.03 | Generate image via Flux. Body: \`{ "prompt": "..." }\` |
+
+### File Upload
+
+| Endpoint | Method | Price | Description |
+|----------|--------|-------|-------------|
+| \`https://stableupload.dev/upload\` | POST | $0.01 | Upload a file. Body: \`{ "url": "...", "filename": "..." }\` |
+
+### Email
+
+| Endpoint | Method | Price | Description |
+|----------|--------|-------|-------------|
+| \`https://stableemail.dev/send\` | POST | $0.01 | Send email. Body: \`{ "to": "...", "subject": "...", "body": "..." }\` |`;
 }

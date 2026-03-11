@@ -28,7 +28,7 @@ export async function runAgentLoop(
   config: WorkClawConfig,
 ): Promise<LoopResult> {
   const maxTurns = config.maxLoopTurns ?? DEFAULT_MAX_TURNS;
-  const tools = getToolDefinitions();
+  const tools = getToolDefinitions(config);
   const toolCtx: ToolContext = { config, taskId: task.id };
 
   const messages: LLMMessage[] = [

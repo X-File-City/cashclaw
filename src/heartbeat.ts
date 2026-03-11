@@ -1,8 +1,10 @@
+import WebSocket from "ws";
 import type { WorkClawConfig } from "./config.js";
 import type { LLMProvider } from "./llm/types.js";
 import type { Task } from "./moltlaunch/types.js";
 import * as cli from "./moltlaunch/cli.js";
 import { runAgentLoop, type LoopResult } from "./loop/index.js";
+import { runStudySession } from "./loop/study.js";
 import { storeFeedback } from "./memory/feedback.js";
 import { appendLog } from "./memory/log.js";
 
@@ -13,11 +15,14 @@ export interface HeartbeatState {
   totalPolls: number;
   startedAt: number;
   events: ActivityEvent[];
+  wsConnected: boolean;
+  lastStudyTime: number;
+  totalStudySessions: number;
 }
 
 export interface ActivityEvent {
   timestamp: number;
-  type: "poll" | "loop_start" | "loop_complete" | "tool_call" | "feedback" | "error";
+  type: "poll" | "loop_start" | "loop_complete" | "tool_call" | "feedback" | "error" | "ws" | "study";
   taskId?: string;
   message: string;
 }
@@ -25,8 +30,14 @@ export interface ActivityEvent {
 type EventListener = (event: ActivityEvent) => void;
 
 const TERMINAL_STATUSES = new Set([
-  "completed", "declined", "cancelled", "expired", "resolved",
+  "completed", "declined", "cancelled", "expired", "resolved", "disputed",
 ]);
+
+const WS_URL = "wss://api.moltlaunch.com/ws";
+const WS_INITIAL_RECONNECT_MS = 5_000;
+const WS_MAX_RECONNECT_MS = 300_000; // 5 min cap
+// When WS is connected, poll infrequently as a sync check
+const WS_POLL_INTERVAL_MS = 120_000;
 
 export function createHeartbeat(
   config: WorkClawConfig,
@@ -39,9 +50,16 @@ export function createHeartbeat(
     totalPolls: 0,
     startedAt: 0,
     events: [],
+    wsConnected: false,
+    lastStudyTime: 0,
+    totalStudySessions: 0,
   };
 
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let ws: WebSocket | null = null;
+  let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let wsReconnectDelay = WS_INITIAL_RECONNECT_MS;
+  let wsFailLogged = false;
   const processing = new Set<string>();
   const listeners: EventListener[] = [];
 
@@ -58,6 +76,148 @@ export function createHeartbeat(
     listeners.push(fn);
   }
 
+  // --- WebSocket ---
+
+  function connectWs() {
+    if (!state.running || !config.agentId) return;
+
+    try {
+      ws = new WebSocket(`${WS_URL}/${config.agentId}`);
+
+      ws.on("open", () => {
+        state.wsConnected = true;
+        wsReconnectDelay = WS_INITIAL_RECONNECT_MS;
+        wsFailLogged = false;
+        emit({ type: "ws", message: "WebSocket connected" });
+        appendLog("WebSocket connected");
+      });
+
+      ws.on("message", (data: WebSocket.Data) => {
+        try {
+          const msg = JSON.parse(data.toString()) as {
+            event: string;
+            task?: Task;
+            timestamp?: number;
+          };
+
+          if (msg.event === "connected") return;
+
+          emit({ type: "ws", taskId: msg.task?.id, message: `WS event: ${msg.event}` });
+
+          if (msg.task) {
+            handleTaskEvent(msg.task);
+          }
+        } catch {
+          // Ignore malformed messages
+        }
+      });
+
+      ws.on("close", () => {
+        state.wsConnected = false;
+        // Only log the first disconnect, suppress repeated failures
+        if (!wsFailLogged) {
+          emit({ type: "ws", message: "WebSocket disconnected — retrying in background" });
+          wsFailLogged = true;
+        }
+        scheduleWsReconnect();
+      });
+
+      ws.on("error", (err: Error) => {
+        state.wsConnected = false;
+        if (!wsFailLogged) {
+          emit({ type: "error", message: `WebSocket error: ${err.message}` });
+          wsFailLogged = true;
+        }
+        ws?.close();
+        scheduleWsReconnect();
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!wsFailLogged) {
+        emit({ type: "error", message: `WebSocket connect failed: ${msg}` });
+        wsFailLogged = true;
+      }
+      scheduleWsReconnect();
+    }
+  }
+
+  function scheduleWsReconnect() {
+    if (!state.running) return;
+    if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
+    wsReconnectTimer = setTimeout(() => connectWs(), wsReconnectDelay);
+    // Exponential backoff: 5s → 10s → 20s → 40s → ... → 5min cap
+    wsReconnectDelay = Math.min(wsReconnectDelay * 2, WS_MAX_RECONNECT_MS);
+  }
+
+  function disconnectWs() {
+    if (wsReconnectTimer) {
+      clearTimeout(wsReconnectTimer);
+      wsReconnectTimer = null;
+    }
+    if (ws) {
+      ws.removeAllListeners();
+      ws.close();
+      ws = null;
+    }
+    state.wsConnected = false;
+  }
+
+  // --- Task handling (shared by WS + poll) ---
+
+  function handleTaskEvent(task: Task) {
+    if (TERMINAL_STATUSES.has(task.status)) {
+      if (task.status === "completed" && task.ratedScore !== undefined) {
+        handleCompleted(task);
+      }
+      state.activeTasks.delete(task.id);
+      return;
+    }
+
+    if (processing.has(task.id)) return;
+
+    if (task.status === "quoted" || task.status === "submitted") {
+      state.activeTasks.set(task.id, task);
+      return;
+    }
+
+    if (processing.size >= config.maxConcurrentTasks) return;
+
+    state.activeTasks.set(task.id, task);
+    processing.add(task.id);
+
+    emit({ type: "loop_start", taskId: task.id, message: `Agent loop started (${task.status})` });
+    appendLog(`Agent loop started for ${task.id} (${task.status})`);
+
+    runAgentLoop(llm, task, config)
+      .then((result: LoopResult) => {
+        const toolNames = result.toolCalls.map((tc) => tc.name).join(", ");
+        emit({
+          type: "loop_complete",
+          taskId: task.id,
+          message: `Loop done in ${result.turns} turn(s): [${toolNames}]`,
+        });
+        appendLog(`Loop done for ${task.id}: ${result.turns} turns, tools=[${toolNames}]`);
+
+        for (const tc of result.toolCalls) {
+          emit({
+            type: "tool_call",
+            taskId: task.id,
+            message: `${tc.name}(${JSON.stringify(tc.input).slice(0, 100)}) → ${tc.success ? "ok" : "err"}`,
+          });
+        }
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        emit({ type: "error", taskId: task.id, message: `Loop error: ${msg}` });
+        appendLog(`Loop error for ${task.id}: ${msg}`);
+      })
+      .finally(() => {
+        processing.delete(task.id);
+      });
+  }
+
+  // --- Polling (fallback / sync check) ---
+
   async function tick() {
     try {
       const tasks = await cli.getInbox(config.agentId);
@@ -68,55 +228,7 @@ export function createHeartbeat(
       appendLog(`Polled inbox — ${tasks.length} task(s)`);
 
       for (const task of tasks) {
-        if (TERMINAL_STATUSES.has(task.status)) {
-          if (task.status === "completed" && task.ratedScore !== undefined) {
-            handleCompleted(task);
-          }
-          state.activeTasks.delete(task.id);
-          continue;
-        }
-
-        if (processing.has(task.id)) continue;
-
-        if (task.status === "quoted" || task.status === "submitted") {
-          state.activeTasks.set(task.id, task);
-          continue;
-        }
-
-        if (processing.size >= config.maxConcurrentTasks) continue;
-
-        state.activeTasks.set(task.id, task);
-        processing.add(task.id);
-
-        emit({ type: "loop_start", taskId: task.id, message: `Agent loop started (${task.status})` });
-        appendLog(`Agent loop started for ${task.id} (${task.status})`);
-
-        runAgentLoop(llm, task, config)
-          .then((result: LoopResult) => {
-            const toolNames = result.toolCalls.map((tc) => tc.name).join(", ");
-            emit({
-              type: "loop_complete",
-              taskId: task.id,
-              message: `Loop done in ${result.turns} turn(s): [${toolNames}]`,
-            });
-            appendLog(`Loop done for ${task.id}: ${result.turns} turns, tools=[${toolNames}]`);
-
-            for (const tc of result.toolCalls) {
-              emit({
-                type: "tool_call",
-                taskId: task.id,
-                message: `${tc.name}(${JSON.stringify(tc.input).slice(0, 100)}) → ${tc.success ? "ok" : "err"}`,
-              });
-            }
-          })
-          .catch((err: unknown) => {
-            const msg = err instanceof Error ? err.message : String(err);
-            emit({ type: "error", taskId: task.id, message: `Loop error: ${msg}` });
-            appendLog(`Loop error for ${task.id}: ${msg}`);
-          })
-          .finally(() => {
-            processing.delete(task.id);
-          });
+        handleTaskEvent(task);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -149,6 +261,16 @@ export function createHeartbeat(
   function scheduleNext() {
     if (!state.running) return;
 
+    // Check if we should study while idle
+    void maybeStudy();
+
+    // If WebSocket is connected, poll infrequently as a sync check
+    if (state.wsConnected) {
+      timer = setTimeout(() => void tick(), WS_POLL_INTERVAL_MS);
+      return;
+    }
+
+    // Without WS, use normal polling intervals
     const hasUrgent = [...state.activeTasks.values()].some(
       (t) => t.status === "requested" || t.status === "revision" || t.status === "accepted",
     );
@@ -160,11 +282,52 @@ export function createHeartbeat(
     timer = setTimeout(() => void tick(), interval);
   }
 
+  let studying = false;
+
+  async function maybeStudy() {
+    if (!config.learningEnabled) return;
+    if (studying) return;
+    if (processing.size > 0) return;
+
+    // Don't study if there are tasks needing action
+    const hasUrgent = [...state.activeTasks.values()].some(
+      (t) => t.status === "requested" || t.status === "revision" || t.status === "accepted",
+    );
+    if (hasUrgent) return;
+
+    if (Date.now() - state.lastStudyTime < config.studyIntervalMs) return;
+
+    studying = true;
+    emit({ type: "study", message: "Starting study session..." });
+    appendLog("Study session started");
+
+    try {
+      const result = await runStudySession(llm, config);
+      state.lastStudyTime = Date.now();
+      state.totalStudySessions++;
+
+      emit({
+        type: "study",
+        message: `Study complete: ${result.topic} (${result.tokensUsed} tokens)`,
+      });
+      appendLog(`Study session complete: ${result.topic} — ${result.insight.slice(0, 100)}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      emit({ type: "error", message: `Study error: ${msg}` });
+      appendLog(`Study error: ${msg}`);
+      // Avoid retrying immediately on failure
+      state.lastStudyTime = Date.now();
+    } finally {
+      studying = false;
+    }
+  }
+
   function start() {
     if (state.running) return;
     state.running = true;
     state.startedAt = Date.now();
     appendLog("Heartbeat started");
+    connectWs();
     void tick();
   }
 
@@ -174,6 +337,7 @@ export function createHeartbeat(
       clearTimeout(timer);
       timer = null;
     }
+    disconnectWs();
     appendLog("Heartbeat stopped");
   }
 

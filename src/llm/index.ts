@@ -143,8 +143,8 @@ function createOpenAICompatibleProvider(
       };
 
       if (baseUrl.includes("openrouter")) {
-        headers["HTTP-Referer"] = "https://workclaw.dev";
-        headers["X-Title"] = "WorkClaw";
+        headers["HTTP-Referer"] = "https://cashclaw.dev";
+        headers["X-Title"] = "CashClaw";
       }
 
       const body: Record<string, unknown> = {

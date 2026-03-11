@@ -1,4 +1,5 @@
 import type { ToolDefinition } from "../llm/types.js";
+import type { WorkClawConfig } from "../config.js";
 import type { Tool, ToolContext, ToolResult } from "./types.js";
 import {
   readTask,
@@ -14,22 +15,36 @@ import {
   readFeedbackHistory,
   logActivity,
 } from "./utility.js";
+import { agentcashFetch, agentcashBalance } from "./agentcash.js";
 
-const TOOL_MAP: Map<string, Tool> = new Map([
-  [readTask.definition.name, readTask],
-  [quoteTask.definition.name, quoteTask],
-  [declineTask.definition.name, declineTask],
-  [submitWork.definition.name, submitWork],
-  [sendMessage.definition.name, sendMessage],
-  [listBounties.definition.name, listBounties],
-  [claimBounty.definition.name, claimBounty],
-  [checkWalletBalance.definition.name, checkWalletBalance],
-  [readFeedbackHistory.definition.name, readFeedbackHistory],
-  [logActivity.definition.name, logActivity],
-]);
+const BASE_TOOLS: Tool[] = [
+  readTask,
+  quoteTask,
+  declineTask,
+  submitWork,
+  sendMessage,
+  listBounties,
+  claimBounty,
+  checkWalletBalance,
+  readFeedbackHistory,
+  logActivity,
+];
 
-export function getToolDefinitions(): ToolDefinition[] {
-  return [...TOOL_MAP.values()].map((t) => t.definition);
+const AGENTCASH_TOOLS: Tool[] = [
+  agentcashFetch,
+  agentcashBalance,
+];
+
+function buildToolMap(config: WorkClawConfig): Map<string, Tool> {
+  const tools = config.agentCashEnabled
+    ? [...BASE_TOOLS, ...AGENTCASH_TOOLS]
+    : BASE_TOOLS;
+  return new Map(tools.map((t) => [t.definition.name, t]));
+}
+
+export function getToolDefinitions(config: WorkClawConfig): ToolDefinition[] {
+  const toolMap = buildToolMap(config);
+  return [...toolMap.values()].map((t) => t.definition);
 }
 
 export async function executeTool(
@@ -37,7 +52,8 @@ export async function executeTool(
   input: Record<string, unknown>,
   ctx: ToolContext,
 ): Promise<ToolResult> {
-  const tool = TOOL_MAP.get(name);
+  const toolMap = buildToolMap(ctx.config);
+  const tool = toolMap.get(name);
   if (!tool) {
     return { success: false, data: `Unknown tool: ${name}` };
   }

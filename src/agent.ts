@@ -5,15 +5,21 @@ import {
   loadConfig,
   savePartialConfig,
   isConfigured,
+  isAgentCashAvailable,
   type WorkClawConfig,
   type LLMConfig,
-  type PersonalityConfig,
 } from "./config.js";
 import { createLLMProvider } from "./llm/index.js";
 import { createHeartbeat, type Heartbeat } from "./heartbeat.js";
 import { readTodayLog } from "./memory/log.js";
-import { getFeedbackStats } from "./memory/feedback.js";
+import { getFeedbackStats, loadFeedback } from "./memory/feedback.js";
+import { loadKnowledge, getRelevantKnowledge } from "./memory/knowledge.js";
+import { loadChat, appendChat, clearChat } from "./memory/chat.js";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import * as cli from "./moltlaunch/cli.js";
+
+const execFileAsync = promisify(execFile);
 
 const PORT = 3777;
 
@@ -28,6 +34,14 @@ interface ServerContext {
 export async function startAgent(): Promise<http.Server> {
   const configured = isConfigured();
   const config = configured ? loadConfig() : null;
+
+  // Auto-enable AgentCash if wallet exists and not explicitly configured
+  if (config && config.agentCashEnabled === undefined) {
+    if (isAgentCashAvailable()) {
+      config.agentCashEnabled = true;
+      savePartialConfig({ agentCashEnabled: true });
+    }
+  }
 
   const ctx: ServerContext = {
     mode: configured ? "running" : "setup",
@@ -141,7 +155,19 @@ function handleApi(
       break;
 
     case "/api/stats":
-      json(res, getFeedbackStats());
+      json(res, {
+        ...getFeedbackStats(),
+        studySessions: ctx.heartbeat.state.totalStudySessions,
+        knowledgeEntries: loadKnowledge().length,
+      });
+      break;
+
+    case "/api/knowledge":
+      json(res, { entries: loadKnowledge() });
+      break;
+
+    case "/api/feedback":
+      json(res, { entries: loadFeedback() });
       break;
 
     case "/api/stop":
@@ -159,6 +185,30 @@ function handleApi(
     case "/api/config-update":
       if (req.method !== "POST") { json(res, { error: "POST only" }, 405); return; }
       handleConfigUpdate(req, res, ctx);
+      break;
+
+    case "/api/chat":
+      if (req.method === "GET") {
+        json(res, { messages: loadChat() });
+      } else if (req.method === "POST") {
+        handleChat(req, res, ctx);
+      } else {
+        json(res, { error: "GET or POST" }, 405);
+      }
+      break;
+
+    case "/api/chat/clear":
+      if (req.method !== "POST") { json(res, { error: "POST only" }, 405); return; }
+      clearChat();
+      json(res, { ok: true });
+      break;
+
+    case "/api/agent-info":
+      handleAgentInfo(res, ctx);
+      break;
+
+    case "/api/agentcash-balance":
+      handleAgentCashBalance(res, ctx);
       break;
 
     default:
@@ -191,6 +241,11 @@ async function handleSetupApi(
       case "/api/setup/agent-lookup": {
         const wallet = await cli.walletShow();
         const agent = await cli.getAgentByWallet(wallet.address);
+        // Auto-save agentId to config if found
+        if (agent) {
+          savePartialConfig({ agentId: agent.agentId });
+          ctx.config = loadConfig();
+        }
         json(res, { agent });
         break;
       }
@@ -245,10 +300,24 @@ async function handleSetupApi(
         break;
       }
 
-      case "/api/setup/personality": {
+      case "/api/setup/specialization": {
         if (req.method !== "POST") { json(res, { error: "POST only" }, 405); return; }
-        const body = JSON.parse(await readBody(req)) as PersonalityConfig;
-        savePartialConfig({ personality: body });
+        const body = JSON.parse(await readBody(req)) as {
+          specialties: string[];
+          pricing: { strategy: string; baseRateEth: string; maxRateEth: string };
+          autoQuote: boolean;
+          autoWork: boolean;
+          maxConcurrentTasks: number;
+          declineKeywords: string[];
+        };
+        savePartialConfig({
+          specialties: body.specialties,
+          pricing: body.pricing as WorkClawConfig["pricing"],
+          autoQuote: body.autoQuote,
+          autoWork: body.autoWork,
+          maxConcurrentTasks: body.maxConcurrentTasks,
+          declineKeywords: body.declineKeywords,
+        });
         ctx.config = loadConfig();
         json(res, { ok: true });
         break;
@@ -286,7 +355,7 @@ function detectCurrentStep(ctx: ServerContext): string {
   if (!ctx.config) return "wallet";
   if (!ctx.config.agentId) return "register";
   if (!ctx.config.llm?.apiKey) return "llm";
-  return "personality";
+  return "specialization";
 }
 
 async function handleConfigUpdate(
@@ -310,11 +379,146 @@ async function handleConfigUpdate(
     if (updates.maxConcurrentTasks) ctx.config.maxConcurrentTasks = updates.maxConcurrentTasks;
     if (updates.declineKeywords) ctx.config.declineKeywords = updates.declineKeywords;
     if (updates.personality) ctx.config.personality = updates.personality;
+    if (updates.learningEnabled !== undefined) ctx.config.learningEnabled = updates.learningEnabled;
+    if (updates.studyIntervalMs !== undefined) ctx.config.studyIntervalMs = updates.studyIntervalMs;
+    if (updates.polling) ctx.config.polling = updates.polling;
+    if (updates.agentCashEnabled !== undefined) ctx.config.agentCashEnabled = updates.agentCashEnabled;
+
+    // LLM hot-swap: preserve existing apiKey if masked, restart heartbeat
+    if (updates.llm) {
+      const newLlm = { ...updates.llm };
+      if (newLlm.apiKey === "***") {
+        newLlm.apiKey = ctx.config.llm.apiKey;
+      }
+      ctx.config.llm = newLlm;
+
+      // Restart heartbeat with new LLM provider
+      if (ctx.heartbeat) {
+        ctx.heartbeat.stop();
+        const llm = createLLMProvider(ctx.config.llm);
+        ctx.heartbeat = createHeartbeat(ctx.config, llm);
+        ctx.heartbeat.start();
+      }
+    }
 
     savePartialConfig(ctx.config);
     json(res, { ok: true });
   } catch {
     json(res, { error: "Invalid JSON" }, 400);
+  }
+}
+
+async function handleAgentInfo(
+  res: http.ServerResponse,
+  ctx: ServerContext,
+) {
+  try {
+    const wallet = await cli.walletShow();
+    const agent = await cli.getAgentByWallet(wallet.address);
+    json(res, { agent });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    json(res, { error: msg }, 500);
+  }
+}
+
+async function handleAgentCashBalance(
+  res: http.ServerResponse,
+  ctx: ServerContext,
+) {
+  if (!ctx.config?.agentCashEnabled) {
+    json(res, { error: "AgentCash not enabled" }, 400);
+    return;
+  }
+  try {
+    const { stdout } = await execFileAsync(
+      "npx",
+      ["agentcash", "wallet", "info", "--format", "json"],
+      { timeout: 15_000, env: { ...process.env } },
+    );
+    const data = JSON.parse(stdout.trim()) as { address: string; balance: string; network: string };
+    json(res, data);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    json(res, { error: msg }, 500);
+  }
+}
+
+async function handleChat(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ctx: ServerContext,
+) {
+  try {
+    const body = JSON.parse(await readBody(req)) as { message: string };
+    if (!body.message?.trim()) {
+      json(res, { error: "Message required" }, 400);
+      return;
+    }
+
+    if (!ctx.config) {
+      json(res, { error: "Not configured" }, 400);
+      return;
+    }
+
+    const userMsg = body.message.trim();
+    appendChat({ role: "user", content: userMsg, timestamp: Date.now() });
+
+    const llm = createLLMProvider(ctx.config.llm);
+    const specialties = ctx.config.specialties.length > 0
+      ? ctx.config.specialties.join(", ")
+      : "general tasks";
+
+    // Gather self-awareness context
+    const allKnowledge = loadKnowledge();
+    const relevantKnowledge = getRelevantKnowledge(ctx.config.specialties, 5);
+    const stats = getFeedbackStats();
+    const hbState = ctx.heartbeat?.state;
+    const studySessions = hbState?.totalStudySessions ?? 0;
+    const isRunning = hbState?.running ?? false;
+
+    const knowledgeSection = relevantKnowledge.length > 0
+      ? `\n\nYou've learned these insights from self-study:\n${relevantKnowledge.map((k) => `- ${k.insight.slice(0, 200)}`).join("\n")}`
+      : "";
+
+    const personalitySection = ctx.config.personality
+      ? `\nYour personality: tone=${ctx.config.personality.tone}, style=${ctx.config.personality.responseStyle}.${ctx.config.personality.customInstructions ? ` Custom instructions: ${ctx.config.personality.customInstructions}` : ""}`
+      : "";
+
+    const systemPrompt = `You are CashClaw (agent "${ctx.config.agentId}"), an autonomous work agent on the moltlaunch marketplace.
+Your specialties: ${specialties}. These are your ONLY areas of expertise — always reference these specific skills, never claim to be "general-purpose".
+
+## Self-awareness
+- Status: ${isRunning ? "RUNNING" : "STOPPED"}
+- Learning: ${ctx.config.learningEnabled ? "ACTIVE" : "DISABLED"} — study sessions every ${Math.round(ctx.config.studyIntervalMs / 60000)} min
+- Study sessions completed: ${studySessions}
+- Knowledge entries: ${allKnowledge.length}
+- Tasks completed: ${stats.totalTasks}, avg score: ${stats.avgScore}/5
+- Tools: quote, decline, submit work, message clients, browse bounties, check wallet, read feedback${personalitySection}
+
+You're chatting with your operator. Be helpful, concise, and direct. Discuss performance, knowledge, tasks, and capabilities. Keep responses grounded in your actual data.${knowledgeSection}`;
+
+    // Build conversation from history (last 20 messages for context)
+    const history = loadChat().slice(-20);
+    const messages = [
+      { role: "system" as const, content: systemPrompt },
+      ...history.map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      })),
+    ];
+
+    const response = await llm.chat(messages);
+    const text = response.content
+      .filter((b): b is { type: "text"; text: string } => b.type === "text")
+      .map((b) => b.text)
+      .join("");
+
+    appendChat({ role: "assistant", content: text, timestamp: Date.now() });
+    json(res, { reply: text });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    json(res, { error: msg }, 500);
   }
 }
 

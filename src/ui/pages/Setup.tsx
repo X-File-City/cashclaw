@@ -2,9 +2,9 @@ import { useState, useMemo } from "react";
 import { WalletStep } from "./setup/WalletStep.js";
 import { RegisterStep } from "./setup/RegisterStep.js";
 import { LLMStep } from "./setup/LLMStep.js";
-import { PersonalityStep } from "./setup/PersonalityStep.js";
+import { SpecializationStep } from "./setup/SpecializationStep.js";
 
-type StepId = "wallet" | "register" | "llm" | "personality";
+type StepId = "wallet" | "register" | "llm" | "specialization";
 
 interface StepDef {
   id: StepId;
@@ -12,10 +12,10 @@ interface StepDef {
 }
 
 const ALL_STEPS: StepDef[] = [
-  { id: "wallet", label: "Wallet" },
-  { id: "register", label: "Register" },
-  { id: "llm", label: "LLM" },
-  { id: "personality", label: "Personality" },
+  { id: "wallet", label: "WALLET" },
+  { id: "register", label: "REGISTER" },
+  { id: "llm", label: "BRAIN" },
+  { id: "specialization", label: "DEPLOY" },
 ];
 
 interface SetupProps {
@@ -42,8 +42,6 @@ export function Setup({ onComplete }: SetupProps) {
     if (existingAgentId) {
       setAgentId(existingAgentId);
       setSkipRegister(true);
-      // Next step after wallet is LLM when skipping register.
-      // Since skipRegister will filter out register, step 1 becomes LLM.
       setStep(1);
     } else {
       next();
@@ -53,45 +51,54 @@ export function Setup({ onComplete }: SetupProps) {
   const currentStepId = steps[step]?.id;
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="border-b border-zinc-800 px-6 py-4">
+    <div className="min-h-screen flex flex-col scanlines">
+      {/* Header */}
+      <header className="border-b border-red-500/8 px-5 py-2.5 bg-zinc-950/95">
         <div className="flex items-center gap-3">
-          <h1 className="text-lg font-bold tracking-tight">WorkClaw</h1>
-          <span className="text-xs text-zinc-500 bg-zinc-900 px-2 py-0.5 rounded">Setup</span>
+          <div className="w-2 h-5 bg-red-500 rounded-[1px] glow-red" />
+          <div>
+            <h1 className="text-sm font-bold tracking-wide text-zinc-100 font-mono leading-none">
+              CASHCLAW
+            </h1>
+            <p className="text-[8px] text-red-500/50 font-mono tracking-[0.25em] leading-none mt-0.5">
+              SYSTEM SETUP
+            </p>
+          </div>
         </div>
       </header>
 
       <main className="flex-1 flex flex-col items-center px-6 py-12">
-        {/* Step indicator */}
-        <div className="flex items-center gap-2 mb-10">
-          {steps.map((s, i) => (
-            <div key={s.id} className="flex items-center gap-2">
-              <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
-                  i < step
-                    ? "bg-emerald-600 text-white"
-                    : i === step
-                      ? "bg-zinc-100 text-zinc-900"
-                      : "bg-zinc-800 text-zinc-500"
-                }`}
-              >
-                {i < step ? "\u2713" : i + 1}
+        {/* Progress */}
+        {step > 0 && (
+          <div className="flex items-center gap-1 mb-10">
+            {steps.map((s, i) => (
+              <div key={s.id} className="flex items-center gap-1">
+                <div
+                  className={`w-6 h-6 rounded-sm flex items-center justify-center text-[10px] font-mono font-bold transition-all ${
+                    i < step
+                      ? "bg-red-600 text-white"
+                      : i === step
+                        ? "bg-zinc-100 text-zinc-900"
+                        : "bg-zinc-900 text-zinc-700 border border-zinc-800"
+                  }`}
+                >
+                  {i < step ? "\u2713" : i + 1}
+                </div>
+                <span
+                  className={`text-[9px] font-mono font-bold tracking-wider mr-1 ${
+                    i <= step ? "text-zinc-400" : "text-zinc-800"
+                  }`}
+                >
+                  {s.label}
+                </span>
+                {i < steps.length - 1 && (
+                  <div className={`w-6 h-px ${i < step ? "bg-red-800" : "bg-zinc-800"}`} />
+                )}
               </div>
-              <span
-                className={`text-sm ${
-                  i === step ? "text-zinc-100" : "text-zinc-500"
-                }`}
-              >
-                {s.label}
-              </span>
-              {i < steps.length - 1 && (
-                <div className="w-8 h-px bg-zinc-700" />
-              )}
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
-        {/* Step content */}
         <div className="w-full max-w-lg">
           {currentStepId === "wallet" && <WalletStep onNext={handleWalletNext} />}
           {currentStepId === "register" && (
@@ -103,7 +110,7 @@ export function Setup({ onComplete }: SetupProps) {
             />
           )}
           {currentStepId === "llm" && <LLMStep onNext={next} />}
-          {currentStepId === "personality" && <PersonalityStep onComplete={onComplete} />}
+          {currentStepId === "specialization" && <SpecializationStep onComplete={onComplete} />}
         </div>
       </main>
     </div>
