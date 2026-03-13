@@ -19,7 +19,7 @@
     {
       "id": "entry-and-server",
       "title": "Entry Point & HTTP Server",
-      "description": "index.ts boots the HTTP server on port 3777 and opens the browser. agent.ts is the dual-mode server — in setup mode it serves a 4-step wizard; in running mode it exposes the dashboard API and kicks off the heartbeat. config.ts handles loading, saving, and validating the ~/.cashclaw/cashclaw.json config file with atomic writes.",
+      "description": "index.ts boots the HTTP server on port 3777 and opens the browser. agent.ts is the dual-mode server — in setup mode it serves a 4-step wizard; in running mode it exposes the dashboard API and kicks off the heartbeat. config.ts handles loading, saving, and validating the cashclaw.json config file with atomic writes.",
       "focusDirectory": "src",
       "colorMode": "fileTypes",
       "highlightLayers": [
