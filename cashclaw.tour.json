@@ -1,0 +1,372 @@
+{
+  "id": "cashclaw-onboarding",
+  "title": "CashClaw — Autonomous Work Agent",
+  "description": "A guided tour of CashClaw's architecture: from the heartbeat loop that polls for marketplace tasks, through the multi-turn LLM agent engine, to the React dashboard and self-learning memory system.",
+  "version": "1.0.0",
+  "audience": "New developers and AI assistants",
+  "prerequisites": [
+    "Basic TypeScript knowledge",
+    "Familiarity with Node.js HTTP servers"
+  ],
+  "steps": [
+    {
+      "id": "overview",
+      "title": "Project Overview",
+      "description": "CashClaw is a single Node.js process that runs 24/7 as an autonomous work agent. It connects to the Moltlaunch marketplace, picks up tasks, executes them with an LLM, submits deliverables, and improves over time through self-learning. The top-level layout is clean: src/ holds all source code, test/ has the test suite, and config files live at the root.",
+      "colorMode": "fileTypes",
+      "focusDirectory": ""
+    },
+    {
+      "id": "entry-and-server",
+      "title": "Entry Point & HTTP Server",
+      "description": "index.ts boots the HTTP server on port 3777 and opens the browser. agent.ts is the dual-mode server — in setup mode it serves a 4-step wizard; in running mode it exposes the dashboard API and kicks off the heartbeat. config.ts handles loading, saving, and validating the ~/.cashclaw/cashclaw.json config file with atomic writes.",
+      "focusDirectory": "src",
+      "colorMode": "fileTypes",
+      "highlightLayers": [
+        {
+          "id": "entry-files",
+          "name": "Entry & Server",
+          "color": "#3b82f6",
+          "items": [
+            { "path": "src/index.ts", "type": "file" },
+            { "path": "src/agent.ts", "type": "file" },
+            { "path": "src/config.ts", "type": "file" }
+          ],
+          "opacity": 0.8,
+          "renderStrategy": "fill"
+        },
+        {
+          "id": "heartbeat-file",
+          "name": "Heartbeat Loop",
+          "color": "#ef4444",
+          "items": [
+            { "path": "src/heartbeat.ts", "type": "file" }
+          ],
+          "opacity": 0.8,
+          "renderStrategy": "fill"
+        }
+      ],
+      "interactiveActions": [
+        {
+          "type": "click-file",
+          "description": "Click index.ts to see the CLI entry point",
+          "target": "src/index.ts"
+        }
+      ]
+    },
+    {
+      "id": "heartbeat",
+      "title": "The Heartbeat — Core Event Loop",
+      "description": "heartbeat.ts is the orchestration engine. It runs three concurrent loops: a WebSocket listener for real-time task events, a REST polling fallback every 30 seconds, and a study scheduler that triggers self-learning sessions. When a new task arrives, it deduplicates against active tasks and dispatches the agent loop.",
+      "focusDirectory": "src",
+      "colorMode": "fileTypes",
+      "highlightLayers": [
+        {
+          "id": "heartbeat-highlight",
+          "name": "Heartbeat",
+          "color": "#ef4444",
+          "items": [
+            { "path": "src/heartbeat.ts", "type": "file" }
+          ],
+          "opacity": 0.8,
+          "renderStrategy": "fill"
+        }
+      ],
+      "interactiveActions": [
+        {
+          "type": "click-file",
+          "description": "Click heartbeat.ts to explore the event loop",
+          "target": "src/heartbeat.ts"
+        }
+      ]
+    },
+    {
+      "id": "agent-loop",
+      "title": "Multi-Turn Agent Loop",
+      "description": "The loop/ directory is the brain. index.ts runs a multi-turn tool-use conversation: build system prompt, inject task context, call the LLM, execute any tool calls, and repeat for up to 10 turns. prompt.ts assembles the agent's identity, pricing rules, and relevant knowledge. context.ts formats task details. study.ts powers self-improvement sessions — analyzing feedback, researching specialties, and simulating practice tasks.",
+      "focusDirectory": "src/loop",
+      "colorMode": "fileTypes",
+      "highlightLayers": [
+        {
+          "id": "loop-core",
+          "name": "Agent Loop Core",
+          "color": "#8b5cf6",
+          "items": [
+            { "path": "src/loop/index.ts", "type": "file" },
+            { "path": "src/loop/prompt.ts", "type": "file" }
+          ],
+          "opacity": 0.8,
+          "renderStrategy": "fill"
+        },
+        {
+          "id": "loop-context",
+          "name": "Context & Study",
+          "color": "#f59e0b",
+          "items": [
+            { "path": "src/loop/context.ts", "type": "file" },
+            { "path": "src/loop/study.ts", "type": "file" }
+          ],
+          "opacity": 0.8,
+          "renderStrategy": "fill"
+        }
+      ],
+      "interactiveActions": [
+        {
+          "type": "click-file",
+          "description": "Click index.ts to see the runAgentLoop function",
+          "target": "src/loop/index.ts"
+        }
+      ]
+    },
+    {
+      "id": "tools",
+      "title": "Tools — The Agent's Hands",
+      "description": "The tools/ directory provides 13 tools the LLM can invoke. marketplace.ts has 7 tools for quoting, declining, submitting work, and browsing bounties. utility.ts adds wallet balance, feedback history, BM25 memory search, and activity logging. agentcash.ts provides optional paid API access. registry.ts wires them together — tools are conditionally registered based on config.",
+      "focusDirectory": "src/tools",
+      "colorMode": "fileTypes",
+      "highlightLayers": [
+        {
+          "id": "tools-marketplace",
+          "name": "Marketplace Tools",
+          "color": "#10b981",
+          "items": [
+            { "path": "src/tools/marketplace.ts", "type": "file" }
+          ],
+          "opacity": 0.8,
+          "renderStrategy": "fill"
+        },
+        {
+          "id": "tools-utility",
+          "name": "Utility & AgentCash",
+          "color": "#06b6d4",
+          "items": [
+            { "path": "src/tools/utility.ts", "type": "file" },
+            { "path": "src/tools/agentcash.ts", "type": "file" }
+          ],
+          "opacity": 0.8,
+          "renderStrategy": "fill"
+        },
+        {
+          "id": "tools-registry",
+          "name": "Registry & Types",
+          "color": "#f59e0b",
+          "items": [
+            { "path": "src/tools/registry.ts", "type": "file" },
+            { "path": "src/tools/types.ts", "type": "file" }
+          ],
+          "opacity": 0.7,
+          "renderStrategy": "border"
+        }
+      ],
+      "interactiveActions": [
+        {
+          "type": "click-file",
+          "description": "Click marketplace.ts to see the 7 marketplace tools",
+          "target": "src/tools/marketplace.ts"
+        }
+      ]
+    },
+    {
+      "id": "llm-providers",
+      "title": "LLM Provider Abstraction",
+      "description": "The llm/ directory abstracts three providers (Anthropic, OpenAI, OpenRouter) behind a single interface using raw fetch — zero SDK dependencies. index.ts is the factory that creates the right provider. types.ts defines LLMProvider, LLMMessage, and ContentBlock interfaces. An internal adapter translates Anthropic's native tool-use format to OpenAI format when needed.",
+      "focusDirectory": "src/llm",
+      "colorMode": "fileTypes",
+      "highlightLayers": [
+        {
+          "id": "llm-files",
+          "name": "LLM Layer",
+          "color": "#ec4899",
+          "items": [
+            { "path": "src/llm/index.ts", "type": "file" },
+            { "path": "src/llm/types.ts", "type": "file" }
+          ],
+          "opacity": 0.8,
+          "renderStrategy": "fill"
+        }
+      ],
+      "interactiveActions": [
+        {
+          "type": "click-file",
+          "description": "Click index.ts to see the provider factory",
+          "target": "src/llm/index.ts"
+        }
+      ]
+    },
+    {
+      "id": "memory",
+      "title": "Memory & Self-Learning",
+      "description": "The memory/ directory is how CashClaw remembers and improves. knowledge.ts stores up to 50 insight entries learned from study sessions. feedback.ts tracks up to 100 client ratings. chat.ts holds operator conversations. log.ts writes daily activity logs. search.ts implements BM25 search with temporal decay (30-day half-life) — the top 5 results are injected into every system prompt, and the LLM can also call memory_search mid-task.",
+      "focusDirectory": "src/memory",
+      "colorMode": "fileTypes",
+      "highlightLayers": [
+        {
+          "id": "memory-knowledge",
+          "name": "Knowledge & Feedback",
+          "color": "#8b5cf6",
+          "items": [
+            { "path": "src/memory/knowledge.ts", "type": "file" },
+            { "path": "src/memory/feedback.ts", "type": "file" }
+          ],
+          "opacity": 0.8,
+          "renderStrategy": "fill"
+        },
+        {
+          "id": "memory-search",
+          "name": "BM25 Search",
+          "color": "#f59e0b",
+          "items": [
+            { "path": "src/memory/search.ts", "type": "file" }
+          ],
+          "opacity": 0.8,
+          "renderStrategy": "fill"
+        },
+        {
+          "id": "memory-other",
+          "name": "Chat & Logs",
+          "color": "#06b6d4",
+          "items": [
+            { "path": "src/memory/chat.ts", "type": "file" },
+            { "path": "src/memory/log.ts", "type": "file" }
+          ],
+          "opacity": 0.7,
+          "renderStrategy": "border"
+        }
+      ],
+      "interactiveActions": [
+        {
+          "type": "click-file",
+          "description": "Click search.ts to see the BM25 implementation",
+          "target": "src/memory/search.ts"
+        }
+      ]
+    },
+    {
+      "id": "moltlaunch",
+      "title": "Marketplace Integration",
+      "description": "The moltlaunch/ directory encapsulates all marketplace interaction in just two files. cli.ts wraps the mltl CLI tool using execFile and parses JSON output. types.ts defines Task, Bounty, WalletInfo, and AgentInfo interfaces. This layer is designed to be replaceable — swap out these two files to connect CashClaw to any marketplace.",
+      "focusDirectory": "src/moltlaunch",
+      "colorMode": "fileTypes",
+      "highlightLayers": [
+        {
+          "id": "moltlaunch-files",
+          "name": "Marketplace Layer",
+          "color": "#10b981",
+          "items": [
+            { "path": "src/moltlaunch/cli.ts", "type": "file" },
+            { "path": "src/moltlaunch/types.ts", "type": "file" }
+          ],
+          "opacity": 0.8,
+          "renderStrategy": "fill"
+        }
+      ],
+      "interactiveActions": [
+        {
+          "type": "click-file",
+          "description": "Click cli.ts to see the CLI wrapper",
+          "target": "src/moltlaunch/cli.ts"
+        }
+      ]
+    },
+    {
+      "id": "dashboard-ui",
+      "title": "React Dashboard",
+      "description": "The ui/ directory is a React + Vite + Tailwind dashboard. App.tsx is the shell with navigation, status, and wallet display. The pages/ directory has five views: Setup wizard (4-step onboarding), Dashboard (live monitoring), Tasks (filterable table with detail panels), Chat (operator-agent conversation), and Settings (hot-reloading config editor). The setup/ subdirectory holds individual wizard steps.",
+      "focusDirectory": "src/ui",
+      "colorMode": "fileTypes",
+      "highlightLayers": [
+        {
+          "id": "ui-shell",
+          "name": "App Shell",
+          "color": "#3b82f6",
+          "items": [
+            { "path": "src/ui/App.tsx", "type": "file" },
+            { "path": "src/ui/main.tsx", "type": "file" }
+          ],
+          "opacity": 0.8,
+          "renderStrategy": "fill"
+        },
+        {
+          "id": "ui-pages",
+          "name": "Pages",
+          "color": "#8b5cf6",
+          "items": [
+            { "path": "src/ui/pages", "type": "directory" }
+          ],
+          "opacity": 0.6,
+          "renderStrategy": "border"
+        }
+      ],
+      "interactiveActions": [
+        {
+          "type": "hover-directory",
+          "description": "Hover over pages/ to see all dashboard views",
+          "target": "src/ui/pages"
+        }
+      ]
+    },
+    {
+      "id": "full-picture",
+      "title": "The Full Picture",
+      "description": "You've now seen every layer of CashClaw: the entry point boots the server, the heartbeat polls for tasks, the agent loop executes them with LLM tool-use, 13 tools provide marketplace and utility actions, the memory system enables self-improvement, and the React dashboard puts operators in control. The architecture is modular — swap the marketplace layer, change LLM providers, or extend the tool registry without touching the core loop.",
+      "focusDirectory": "",
+      "colorMode": "fileTypes",
+      "highlightLayers": [
+        {
+          "id": "final-core",
+          "name": "Core Engine",
+          "color": "#8b5cf6",
+          "items": [
+            { "path": "src/loop", "type": "directory" },
+            { "path": "src/heartbeat.ts", "type": "file" }
+          ],
+          "opacity": 0.5,
+          "renderStrategy": "border"
+        },
+        {
+          "id": "final-tools",
+          "name": "Tools & LLM",
+          "color": "#10b981",
+          "items": [
+            { "path": "src/tools", "type": "directory" },
+            { "path": "src/llm", "type": "directory" }
+          ],
+          "opacity": 0.5,
+          "renderStrategy": "border"
+        },
+        {
+          "id": "final-memory",
+          "name": "Memory & Marketplace",
+          "color": "#f59e0b",
+          "items": [
+            { "path": "src/memory", "type": "directory" },
+            { "path": "src/moltlaunch", "type": "directory" }
+          ],
+          "opacity": 0.5,
+          "renderStrategy": "border"
+        },
+        {
+          "id": "final-ui",
+          "name": "Dashboard UI",
+          "color": "#3b82f6",
+          "items": [
+            { "path": "src/ui", "type": "directory" }
+          ],
+          "opacity": 0.5,
+          "renderStrategy": "border"
+        }
+      ],
+      "interactiveActions": [
+        {
+          "type": "explore",
+          "description": "Explore the codebase freely — you know the lay of the land now"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "author": "Claude",
+    "createdAt": "2026-03-13",
+    "tags": ["onboarding", "architecture", "autonomous-agent"]
+  }
+}
